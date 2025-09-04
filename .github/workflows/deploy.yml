@@ -44,6 +44,10 @@ jobs:
         vercel-args: '--no-wait'
         vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
         vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    - name: Skip Vercel deployment (no secrets)
+      if: secrets.VERCEL_TOKEN == ''
+      run: echo "⚠️ Vercel deployment skipped - VERCEL_TOKEN secret not configured"
         
     - name: Skip Vercel deployment
       if: secrets.VERCEL_TOKEN == ''
