@@ -1,32 +1,70 @@
-# Multi-stage build: Build stage creates dist, Production stage serves it
-FROM node:22-alpine AS builder
+# Reddit Digest - Multi-service Docker Configuration
 
-# Install Python and build tools for native dependencies
-RUN apk add --no-cache python3 make g++
+# Build stage for frontend
+FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app
 
+# Copy frontend package files
 COPY package*.json ./
-  
-RUN npm install --prefer-offline --no-audit
+COPY vite.config.js ./
+COPY tailwind.config.js ./
+COPY index.html ./
 
-# Copy source code after dependencies are installed
-COPY . .
+# Install frontend dependencies
+RUN npm ci --only=production
 
-# Build the application with memory optimization
-RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
+# Copy frontend source code
+COPY src/ ./src/
+COPY public/ ./public/
 
+# Build frontend for production
+RUN npm run build
 
-FROM node:22-alpine AS production
-
-# Install serve globally for production
-RUN npm install -g serve
+# Build stage for backend
+FROM node:18-alpine AS backend-builder
 
 WORKDIR /app
 
-# Copy ONLY the built dist directory from builder stage
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json ./
+# Copy backend package files
+COPY server/package*.json ./
 
-EXPOSE 3000
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# Install backend dependencies
+RUN npm ci --only=production
+
+# Production stage - serves both frontend and backend
+FROM node:18-alpine AS production
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+WORKDIR /app
+
+# Copy backend dependencies and code
+COPY --from=backend-builder /app/node_modules ./node_modules
+COPY server/ ./
+
+# Copy built frontend assets to be served by backend
+COPY --from=frontend-builder /app/dist ./public
+
+# Create necessary directories
+RUN mkdir -p logs uploads
+RUN chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
+
+# Expose port (backend serves both API and frontend)
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Start the application
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "index.js"]
