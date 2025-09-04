@@ -1,7 +1,7 @@
 # Reddit Digest - Multi-service Docker Configuration
 
 # Build stage for frontend
-FROM node:18-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -11,8 +11,8 @@ COPY vite.config.js ./
 COPY tailwind.config.js ./
 COPY index.html ./
 
-# Install frontend dependencies
-RUN npm ci --only=production
+# Install frontend dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy frontend source code
 COPY src/ ./src/
@@ -22,7 +22,7 @@ COPY public/ ./public/
 RUN npm run build
 
 # Build stage for backend
-FROM node:18-alpine AS backend-builder
+FROM node:22-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ COPY server/package*.json ./
 RUN npm ci --only=production
 
 # Production stage - serves both frontend and backend
-FROM node:18-alpine AS production
+FROM node:22-alpine AS production
 
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
